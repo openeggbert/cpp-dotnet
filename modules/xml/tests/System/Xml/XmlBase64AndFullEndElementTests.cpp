@@ -18,6 +18,7 @@
 #include "System/ArgumentException.hpp"
 #include "System/ArgumentOutOfRangeException.hpp"
 #include "System/InvalidOperationException.hpp"
+#include "System/Xml/XmlException.hpp"
 #include "System/Xml/XmlReader.hpp"
 #include "System/Xml/XmlWriter.hpp"
 
@@ -123,4 +124,57 @@ TEST(XmlBase64Test, ReadContentAsBase64RejectsARangePastTheEndOfTheBuffer)
     EXPECT_THROW(reader->ReadContentAsBase64(read, 1, 5), System::ArgumentException);
     EXPECT_THROW(reader->ReadContentAsBase64(read, -1, 1), System::ArgumentOutOfRangeException);
     EXPECT_THROW(reader->ReadContentAsBase64(read, 0, -1), System::ArgumentOutOfRangeException);
+}
+
+TEST(XmlBinHexTest, WriteBinHexUsesTwoUppercaseDigitsPerByte)
+{
+    const std::vector<bytecs> bytes{0x00, 0x0F, 0xA5, 0xFF};
+    std::unique_ptr<XmlWriter> writer(XmlWriter::CreateToString());
+    writer->WriteStartElement("EndGameState");
+    writer->WriteBinHex(bytes, 0, 4);
+    writer->WriteFullEndElement();
+
+    EXPECT_NE(writer->ToString().find("<EndGameState>000FA5FF</EndGameState>"), std::string::npos);
+}
+
+TEST(XmlBinHexTest, ReadContentAsBinHexReadsBackWhatWriteBinHexWrote)
+{
+    const std::vector<bytecs> scores{0, 6, 12, 0, 20, 5, 25, 30, 0, 40, 0, 50};
+    std::unique_ptr<XmlWriter> writer(XmlWriter::CreateToString());
+    writer->WriteStartElement("EndGameState");
+    writer->WriteBinHex(scores, 0, 12);
+    writer->WriteFullEndElement();
+
+    std::unique_ptr<XmlReader> reader(XmlReader::CreateFromString(writer->ToString()));
+    reader->MoveToContent();
+    reader->Read();
+
+    std::vector<bytecs> read(12, 0);
+    EXPECT_EQ(reader->ReadContentAsBinHex(read, 0, 12), 12);
+    EXPECT_EQ(read, scores);
+}
+
+TEST(XmlBinHexTest, ReadContentAsBinHexAcceptsLowercaseDigits)
+{
+    std::unique_ptr<XmlReader> reader(XmlReader::CreateFromString("<H>0fa5ff</H>"));
+    reader->MoveToContent();
+    reader->Read();
+
+    std::vector<bytecs> read(3, 0);
+    EXPECT_EQ(reader->ReadContentAsBinHex(read, 0, 3), 3);
+    EXPECT_EQ(read, (std::vector<bytecs>{0x0F, 0xA5, 0xFF}));
+}
+
+TEST(XmlBinHexTest, ReadContentAsBinHexRejectsContentThatIsNotHexadecimal)
+{
+    std::unique_ptr<XmlReader> odd(XmlReader::CreateFromString("<H>ABC</H>"));
+    odd->MoveToContent();
+    odd->Read();
+    std::vector<bytecs> read(4, 0);
+    EXPECT_THROW(odd->ReadContentAsBinHex(read, 0, 1), System::Xml::XmlException);
+
+    std::unique_ptr<XmlReader> notHex(XmlReader::CreateFromString("<H>ZZ</H>"));
+    notHex->MoveToContent();
+    notHex->Read();
+    EXPECT_THROW(notHex->ReadContentAsBinHex(read, 0, 1), System::Xml::XmlException);
 }

@@ -178,6 +178,26 @@ void XmlWriter::WriteBase64(const std::vector<SharpRuntime::bytecs>& buffer,
     WriteString(System::Convert::ToBase64String(slice));
 }
 
+void XmlWriter::WriteBinHex(const std::vector<SharpRuntime::bytecs>& buffer,
+                            SharpRuntime::intcs index, SharpRuntime::intcs count) {
+    ThrowIfClosed(state_.get(), "WriteBinHex");
+    if (index < 0)
+        throw System::ArgumentOutOfRangeException("index");
+    if (count < 0)
+        throw System::ArgumentOutOfRangeException("count");
+    if (static_cast<std::size_t>(index) + static_cast<std::size_t>(count) > buffer.size())
+        throw System::ArgumentException("XmlWriter::WriteBinHex: the range runs past the end of the buffer.");
+    static constexpr char digits[] = "0123456789ABCDEF";
+    std::string hex;
+    hex.reserve(static_cast<std::size_t>(count) * 2);
+    for (SharpRuntime::intcs i = 0; i < count; ++i) {
+        const auto byte = static_cast<unsigned char>(buffer[static_cast<std::size_t>(index + i)]);
+        hex.push_back(digits[byte >> 4]);
+        hex.push_back(digits[byte & 0x0F]);
+    }
+    WriteString(hex);
+}
+
 void XmlWriter::WriteAttributeString(const std::string& name, const std::string& value) {
     ThrowIfClosed(state_.get(), "WriteAttributeString");
     (void)XmlConvert::VerifyName(name);

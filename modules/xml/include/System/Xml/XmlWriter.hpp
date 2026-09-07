@@ -110,6 +110,22 @@ namespace System::Xml {
                          SharpRuntime::intcs index, SharpRuntime::intcs count);
 
         /**
+         * @brief Writes a range of bytes as BinHex text content.
+         *
+         * BinHex here is .NET's meaning of the word: two uppercase hexadecimal digits per
+         * byte and nothing else -- not the Macintosh container format of the same name.
+         *
+         * @param buffer The bytes to encode.
+         * @param index  Index of the first byte to encode.
+         * @param count  How many bytes to encode.
+         *
+         * @throws System::ArgumentOutOfRangeException when @p index or @p count is negative.
+         * @throws System::ArgumentException when the range runs past the end of @p buffer.
+         */
+        void WriteBinHex(const std::vector<SharpRuntime::bytecs>& buffer,
+                         SharpRuntime::intcs index, SharpRuntime::intcs count);
+
+        /**
          * @brief Writes XML whitespace as content at the current position.
          *
          * @p whitespace may contain only space, tab, carriage return, and line feed. This is

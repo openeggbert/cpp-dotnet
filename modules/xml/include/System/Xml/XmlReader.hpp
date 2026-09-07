@@ -205,6 +205,26 @@ namespace System::Xml {
                                                 SharpRuntime::intcs index,
                                                 SharpRuntime::intcs count);
 
+        /**
+         * @brief Decodes BinHex text content into a byte buffer.
+         *
+         * The counterpart of @c XmlWriter::WriteBinHex, and positioned the same way as
+         * @c ReadContentAsBase64: repeated calls on one node continue where the last stopped.
+         * Both hexadecimal cases are accepted on the way in.
+         *
+         * @param buffer Destination.
+         * @param index  Where in @p buffer to start writing.
+         * @param count  The most bytes to write.
+         * @return How many bytes were written.
+         *
+         * @throws System::ArgumentOutOfRangeException when @p index or @p count is negative.
+         * @throws System::ArgumentException when the range runs past the end of @p buffer.
+         * @throws System::Xml::XmlException when the content is not valid BinHex.
+         */
+        SharpRuntime::intcs ReadContentAsBinHex(std::vector<SharpRuntime::bytecs>& buffer,
+                                                SharpRuntime::intcs index,
+                                                SharpRuntime::intcs count);
+
         void ReadStartElement();
 
         /**

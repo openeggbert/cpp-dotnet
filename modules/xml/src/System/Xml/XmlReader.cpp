@@ -457,6 +457,50 @@ SharpRuntime::intcs XmlReader::ReadContentAsBase64(std::vector<SharpRuntime::byt
     return static_cast<SharpRuntime::intcs>(taken);
 }
 
+SharpRuntime::intcs XmlReader::ReadContentAsBinHex(std::vector<SharpRuntime::bytecs>& buffer,
+                                                   SharpRuntime::intcs index,
+                                                   SharpRuntime::intcs count) {
+    if (index < 0)
+        throw System::ArgumentOutOfRangeException("index");
+    if (count < 0)
+        throw System::ArgumentOutOfRangeException("count");
+    if (static_cast<std::size_t>(index) + static_cast<std::size_t>(count) > buffer.size())
+        throw System::ArgumentException(
+            "XmlReader::ReadContentAsBinHex: the range runs past the end of the buffer.");
+    if (!hasCurrentNode(state_.get()) || count == 0)
+        return 0;
+
+    if (state_->base64Event != state_->pos) {
+        state_->base64Event = state_->pos;
+        state_->base64Consumed = 0;
+    }
+
+    const std::string hex = getValueProperty();
+    if (hex.size() % 2 != 0)
+        throw XmlException("XmlReader::ReadContentAsBinHex: the content has an odd number of digits.");
+
+    auto nibble = [](char ch) -> int {
+        if (ch >= '0' && ch <= '9') return ch - '0';
+        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+        throw XmlException("XmlReader::ReadContentAsBinHex: the content is not hexadecimal.");
+    };
+
+    const std::size_t total = hex.size() / 2;
+    if (state_->base64Consumed >= total)
+        return 0;
+
+    const std::size_t taken = std::min(total - state_->base64Consumed,
+                                       static_cast<std::size_t>(count));
+    for (std::size_t i = 0; i < taken; ++i) {
+        const std::size_t at = (state_->base64Consumed + i) * 2;
+        buffer[static_cast<std::size_t>(index) + i] =
+            static_cast<SharpRuntime::bytecs>((nibble(hex[at]) << 4) | nibble(hex[at + 1]));
+    }
+    state_->base64Consumed += taken;
+    return static_cast<SharpRuntime::intcs>(taken);
+}
+
 void XmlReader::ReadStartElement() {
     if (!hasCurrentNode(state_.get()) ||
         state_->events[static_cast<size_t>(state_->pos)].type != XmlNodeType::Element)
