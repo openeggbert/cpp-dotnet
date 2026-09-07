@@ -137,7 +137,7 @@ namespace System::Xml::Serialization {
                 AddSchemaNamespaces(root);
                 parent->AppendChild(root);
                 for (const Item& item : value) {
-                    WriteValue(doc, root, ItemElementName<Item>(), item);
+                    WriteItem(doc, root, ItemElementName<Item>(), item);
                 }
             } else {
                 static_assert(detail::XmlComposite<T>,
@@ -193,7 +193,7 @@ namespace System::Xml::Serialization {
                 std::string rootName = std::string("ArrayOf") + ItemElementName<Item>();
                 System::Xml::XmlElement* root = MakeRootElement(doc, rootName);
                 for (const Item& item : value) {
-                    WriteValue(doc, root, ItemElementName<Item>(), item);
+                    WriteItem(doc, root, ItemElementName<Item>(), item);
                 }
             } else {
                 static_assert(detail::XmlComposite<T>,
@@ -255,7 +255,9 @@ namespace System::Xml::Serialization {
          * composite, or the XSD primitive name (`string`, `int`, `boolean`, ...) otherwise. */
         template <typename Item>
         [[nodiscard]] static constexpr const char* ItemElementName() {
-            if constexpr (detail::XmlComposite<Item>) {
+            if constexpr (detail::IsXmlReferenceV<Item>) {
+                return ItemElementName<typename detail::XmlReferenceTraits<Item>::Pointee>();
+            } else if constexpr (detail::XmlComposite<Item>) {
                 return SharpXmlRootName(static_cast<const Item*>(nullptr));
             } else {
                 return detail::XmlPrimitiveElementName<Item>();
@@ -267,12 +269,19 @@ namespace System::Xml::Serialization {
         template <typename Value>
         static void WriteValue(System::Xml::XmlDocument& doc, System::Xml::XmlElement* parent,
                                 const std::string& elementName, const Value& value) {
-            if constexpr (detail::IsXmlListV<Value>) {
+            if constexpr (detail::IsXmlReferenceV<Value>) {
+                // A C# reference member. .NET omits a null member entirely and marks a null list
+                // item with xsi:nil, both measured against the XNA 4.0 runtime; the caller tells
+                // the two apart, so this writes nothing and ListWriteValue handles the item case.
+                if (value != nullptr) {
+                    WriteValue(doc, parent, elementName, *value);
+                }
+            } else if constexpr (detail::IsXmlListV<Value>) {
                 System::Xml::XmlElement* wrapper = doc.CreateElement(elementName);
                 parent->AppendChild(wrapper);
                 using Item = typename detail::XmlListTraits<Value>::Item;
                 for (const Item& item : value) {
-                    WriteValue(doc, wrapper, ItemElementName<Item>(), item);
+                    WriteItem(doc, wrapper, ItemElementName<Item>(), item);
                 }
             } else if constexpr (detail::XmlComposite<Value>) {
                 System::Xml::XmlElement* element = doc.CreateElement(elementName);
@@ -283,6 +292,31 @@ namespace System::Xml::Serialization {
                 parent->AppendChild(element);
                 element->setInnerTextProperty(detail::ToXmlText(value));
             }
+        }
+
+        /**
+         * @brief Writes one list item, which differs from a member only in how a null reference
+         * is spelled: .NET omits a null member and writes `xsi:nil="true"` for a null item.
+         */
+        template <typename Item>
+        static void WriteItem(System::Xml::XmlDocument& doc, System::Xml::XmlElement* parent,
+                              const std::string& elementName, const Item& item) {
+            if constexpr (detail::IsXmlReferenceV<Item>) {
+                if (item == nullptr) {
+                    System::Xml::XmlElement* element = doc.CreateElement(elementName);
+                    element->SetAttribute("xsi:nil", "true");
+                    parent->AppendChild(element);
+                    return;
+                }
+                WriteValue(doc, parent, elementName, *item);
+            } else {
+                WriteValue(doc, parent, elementName, item);
+            }
+        }
+
+        /** @brief True when an element carries .NET's `xsi:nil="true"` null marker. */
+        [[nodiscard]] static bool IsNilElement(System::Xml::XmlElement* element) {
+            return element != nullptr && element->GetAttribute("xsi:nil") == "true";
         }
 
         template <typename Composite>
@@ -325,7 +359,18 @@ namespace System::Xml::Serialization {
 
         template <typename Value>
         static void ReadInto(System::Xml::XmlElement* element, Value& out) {
-            if constexpr (detail::IsXmlListV<Value>) {
+            if constexpr (detail::IsXmlReferenceV<Value>) {
+                // xsi:nil="true" is .NET's own spelling for a null reference; anything else is a
+                // real object, so one is constructed to read into -- the C++ counterpart of the
+                // instance XmlSerializer creates before filling it.
+                if (IsNilElement(element)) {
+                    out = nullptr;
+                    return;
+                }
+                using Pointee = typename detail::XmlReferenceTraits<Value>::Pointee;
+                out = std::make_shared<Pointee>();
+                ReadInto(element, *out);
+            } else if constexpr (detail::IsXmlListV<Value>) {
                 ReadList(element, out);
             } else if constexpr (detail::XmlComposite<Value>) {
                 ReadMembers(element, out);

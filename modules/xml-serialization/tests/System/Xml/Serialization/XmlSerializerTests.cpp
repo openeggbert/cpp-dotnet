@@ -556,3 +556,68 @@ TEST(XmlSerializerFormattingTests, IndentedOutputRoundTripsToTheSameValues) {
     ASSERT_EQ(back.entities.size(), 1u);
     EXPECT_TRUE(back.entities[0] == entity);
 }
+
+// --- C# reference members, modelled as std::shared_ptr -------------------------------------
+//
+// Measured against the XNA 4.0 runtime with RolePlayingGameData's own types: a null reference
+// MEMBER is omitted entirely, while a null list ITEM is written as xsi:nil="true". Both shapes
+// are reproduced here rather than smoothed into one.
+
+namespace {
+
+struct RefLeaf {
+    std::string Name;
+    int Value = 0;
+    SHARP_XML_SERIALIZABLE(RefLeaf, "RefLeaf", SHARP_XML_M(RefLeaf, Name), SHARP_XML_M(RefLeaf, Value))
+    bool operator==(const RefLeaf&) const = default;
+};
+
+struct RefHolder {
+    std::shared_ptr<RefLeaf> Sprite;
+    std::vector<std::shared_ptr<RefLeaf>> Animations;
+    SHARP_XML_SERIALIZABLE(RefHolder, "RefHolder", SHARP_XML_M(RefHolder, Sprite),
+                           SHARP_XML_M(RefHolder, Animations))
+};
+
+}  // namespace
+
+TEST(XmlSerializerTests, ReferenceMemberSerializesThePointeeInline) {
+    RefHolder holder;
+    holder.Sprite = std::make_shared<RefLeaf>(RefLeaf{"Chest", 3});
+    holder.Animations.push_back(std::make_shared<RefLeaf>(RefLeaf{"Idle", 1}));
+
+    const std::string xml = XmlSerializer<RefHolder>{}.Serialize(holder);
+
+    EXPECT_NE(xml.find("<Sprite><Name>Chest</Name><Value>3</Value></Sprite>"), std::string::npos) << xml;
+    EXPECT_NE(xml.find("<Animations><RefLeaf><Name>Idle</Name><Value>1</Value></RefLeaf></Animations>"),
+              std::string::npos)
+        << xml;
+}
+
+TEST(XmlSerializerTests, NullReferenceMemberIsOmittedAndNullItemIsNil) {
+    RefHolder holder;
+    holder.Animations.push_back(nullptr);
+
+    const std::string xml = XmlSerializer<RefHolder>{}.Serialize(holder);
+
+    EXPECT_EQ(xml.find("<Sprite"), std::string::npos) << "a null member must not be written: " << xml;
+    // The nil marker is .NET's; the empty-element spelling is this module's own XmlWriter form
+    // (`<X/>`, no space before the slash), which every other element here already uses.
+    EXPECT_NE(xml.find("<RefLeaf xsi:nil=\"true\"/>"), std::string::npos) << xml;
+}
+
+TEST(XmlSerializerTests, ReferenceRoundTripRestoresPointeesAndNulls) {
+    RefHolder holder;
+    holder.Sprite = std::make_shared<RefLeaf>(RefLeaf{"Chest", 3});
+    holder.Animations.push_back(std::make_shared<RefLeaf>(RefLeaf{"Idle", 1}));
+    holder.Animations.push_back(nullptr);
+
+    const RefHolder back = XmlSerializer<RefHolder>{}.Deserialize(XmlSerializer<RefHolder>{}.Serialize(holder));
+
+    ASSERT_NE(back.Sprite, nullptr);
+    EXPECT_EQ(*back.Sprite, *holder.Sprite);
+    ASSERT_EQ(back.Animations.size(), 2u);
+    ASSERT_NE(back.Animations[0], nullptr);
+    EXPECT_EQ(*back.Animations[0], *holder.Animations[0]);
+    EXPECT_EQ(back.Animations[1], nullptr);
+}

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -90,6 +91,31 @@ namespace System::Xml::Serialization::detail {
         static void Append(System::Collections::Generic::List<U>& list, U value) {
             list.Add(value);
         }
+    };
+
+    /**
+     * @brief Detects a C# *reference* member, which this port models as `std::shared_ptr<U>`.
+     *
+     * XmlSerializer follows a reference and writes the object it points at inline. A null one is
+     * omitted where it is a member, and written as `xsi:nil="true"` where it is a list item --
+     * both measured against the XNA 4.0 runtime with RolePlayingGameData's own types, not
+     * inferred. That asymmetry is .NET's, so it is reproduced rather than smoothed over.
+     */
+    template <typename T>
+    struct IsXmlReference : std::false_type {};
+
+    template <typename U>
+    struct IsXmlReference<std::shared_ptr<U>> : std::true_type {};
+
+    template <typename T>
+    inline constexpr bool IsXmlReferenceV = IsXmlReference<T>::value;
+
+    template <typename T>
+    struct XmlReferenceTraits;
+
+    template <typename U>
+    struct XmlReferenceTraits<std::shared_ptr<U>> {
+        using Pointee = U;
     };
 
     /**
