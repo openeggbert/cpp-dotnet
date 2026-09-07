@@ -4,7 +4,9 @@
 #pragma once
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "SharpRuntime/SharpRuntimeHelper.hpp"
 #include "System/Xml/XmlWriterSettings.hpp"
 
 namespace System::Xml {
@@ -61,6 +63,18 @@ namespace System::Xml {
         void WriteEndElement();
 
         /**
+         * @brief Closes the innermost open element with an explicit end tag.
+         *
+         * @c WriteEndElement() lets an element with no content collapse to `<name />`.
+         * This one always writes `<name></name>`. The difference is invisible to an XML
+         * parser and highly visible to a hand-written reader that counts nodes, which is
+         * why .NET offers both and why a format defined by such a reader may depend on it.
+         *
+         * @throws System::InvalidOperationException when no element is open.
+         */
+        void WriteFullEndElement();
+
+        /**
          * @brief Writes an attribute on the current element.
          *
          * Must be called immediately after @c WriteStartElement, before any child
@@ -81,6 +95,19 @@ namespace System::Xml {
          * @param text  Text content (will be XML-escaped).
          */
         void WriteString(const std::string& text);
+
+        /**
+         * @brief Writes a range of bytes as Base64 text content.
+         *
+         * @param buffer The bytes to encode.
+         * @param index  Index of the first byte to encode.
+         * @param count  How many bytes to encode.
+         *
+         * @throws System::ArgumentOutOfRangeException when @p index or @p count is negative.
+         * @throws System::ArgumentException when the range runs past the end of @p buffer.
+         */
+        void WriteBase64(const std::vector<SharpRuntime::bytecs>& buffer,
+                         SharpRuntime::intcs index, SharpRuntime::intcs count);
 
         /**
          * @brief Writes XML whitespace as content at the current position.

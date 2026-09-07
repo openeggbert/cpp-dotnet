@@ -2,6 +2,9 @@
 // Copyright (c) Robert Vokac and contributors
 // Portions based on .NET runtime API (MIT License, Copyright .NET Foundation and Contributors)
 #include "System/Xml/XmlReader.hpp"
+#include <algorithm>
+#include "System/ArgumentOutOfRangeException.hpp"
+#include "System/Convert.hpp"
 #include <tinyxml2/tinyxml2.h>
 #include "System/Xml/XmlException.hpp"
 #include "System/Xml/XmlReaderSettings.hpp"
@@ -40,6 +43,11 @@ struct XmlReaderState {
     int                                pos       = -1;  // before first Read()
     int                                attrIndex = -1;  // attribute cursor (-1 = on element)
     ReadState                          readState = ReadState::Initial;
+    // ReadContentAsBase64 may be called repeatedly to drain one text node in chunks, so how
+    // far it has drained has to survive between calls. Keyed on the event it was draining;
+    // moving to another node starts over.
+    int                                base64Event    = -1;
+    std::size_t                        base64Consumed = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -417,6 +425,38 @@ std::string XmlReader::ReadElementContentAsString() {
 
 // A closed reader is on no node, so these two report the same "not on the right node"
 // error they already report for any other wrong position -- no new exception identity.
+SharpRuntime::intcs XmlReader::ReadContentAsBase64(std::vector<SharpRuntime::bytecs>& buffer,
+                                                   SharpRuntime::intcs index,
+                                                   SharpRuntime::intcs count) {
+    if (index < 0)
+        throw System::ArgumentOutOfRangeException("index");
+    if (count < 0)
+        throw System::ArgumentOutOfRangeException("count");
+    if (static_cast<std::size_t>(index) + static_cast<std::size_t>(count) > buffer.size())
+        throw System::ArgumentException(
+            "XmlReader::ReadContentAsBase64: the range runs past the end of the buffer.");
+    if (!hasCurrentNode(state_.get()) || count == 0)
+        return 0;
+
+    if (state_->base64Event != state_->pos) {
+        state_->base64Event = state_->pos;
+        state_->base64Consumed = 0;
+    }
+
+    const std::vector<SharpRuntime::bytecs> decoded =
+        System::Convert::FromBase64String(getValueProperty());
+    if (state_->base64Consumed >= decoded.size())
+        return 0;
+
+    const std::size_t available = decoded.size() - state_->base64Consumed;
+    const std::size_t taken = std::min(available, static_cast<std::size_t>(count));
+    std::copy(decoded.begin() + static_cast<std::ptrdiff_t>(state_->base64Consumed),
+              decoded.begin() + static_cast<std::ptrdiff_t>(state_->base64Consumed + taken),
+              buffer.begin() + index);
+    state_->base64Consumed += taken;
+    return static_cast<SharpRuntime::intcs>(taken);
+}
+
 void XmlReader::ReadStartElement() {
     if (!hasCurrentNode(state_.get()) ||
         state_->events[static_cast<size_t>(state_->pos)].type != XmlNodeType::Element)

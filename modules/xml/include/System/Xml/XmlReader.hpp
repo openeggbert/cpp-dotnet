@@ -186,6 +186,25 @@ namespace System::Xml {
          * @throws XmlException if the current node is not an element, which includes a
          *         reader that has been closed — a closed reader is on no node.
          */
+        /**
+         * @brief Decodes Base64 text content into a byte buffer.
+         *
+         * Reads from the current text node. Calling it again on the same node continues
+         * where the previous call stopped, which is how a caller drains content larger
+         * than its buffer; moving the reader elsewhere starts over.
+         *
+         * @param buffer Destination.
+         * @param index  Where in @p buffer to start writing.
+         * @param count  The most bytes to write.
+         * @return How many bytes were written -- fewer than @p count once the content runs out.
+         *
+         * @throws System::ArgumentOutOfRangeException when @p index or @p count is negative.
+         * @throws System::ArgumentException when the range runs past the end of @p buffer.
+         */
+        SharpRuntime::intcs ReadContentAsBase64(std::vector<SharpRuntime::bytecs>& buffer,
+                                                SharpRuntime::intcs index,
+                                                SharpRuntime::intcs count);
+
         void ReadStartElement();
 
         /**

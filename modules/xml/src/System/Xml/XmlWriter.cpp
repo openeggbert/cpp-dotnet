@@ -4,6 +4,8 @@
 #include "System/Xml/XmlWriter.hpp"
 #include <tinyxml2/tinyxml2.h>
 #include "System/ArgumentException.hpp"
+#include "System/ArgumentOutOfRangeException.hpp"
+#include "System/Convert.hpp"
 #include "System/InvalidOperationException.hpp"
 #include "System/Xml/XmlConvert.hpp"
 #include "System/Xml/XmlException.hpp"
@@ -146,6 +148,34 @@ void XmlWriter::WriteEndElement() {
     if (!state_ || state_->nodeStack.size() <= 1) // never pop the document
         throw System::InvalidOperationException("XmlWriter::WriteEndElement: there is no open element.");
     state_->nodeStack.pop();
+}
+
+void XmlWriter::WriteFullEndElement() {
+    ThrowIfClosed(state_.get(), "WriteFullEndElement");
+    if (!state_ || state_->nodeStack.size() <= 1) // never pop the document
+        throw System::InvalidOperationException("XmlWriter::WriteFullEndElement: there is no open element.");
+    // tinyxml2 collapses a childless element to `<name />` when it prints. An empty text
+    // child is what makes it print the separate end tag instead, which is the whole
+    // difference between this and WriteEndElement().
+    tinyxml2::XMLNode* node = state_->nodeStack.top();
+    if (node->NoChildren()) {
+        node->InsertEndChild(state_->doc.NewText(""));
+    }
+    state_->nodeStack.pop();
+}
+
+void XmlWriter::WriteBase64(const std::vector<SharpRuntime::bytecs>& buffer,
+                            SharpRuntime::intcs index, SharpRuntime::intcs count) {
+    ThrowIfClosed(state_.get(), "WriteBase64");
+    if (index < 0)
+        throw System::ArgumentOutOfRangeException("index");
+    if (count < 0)
+        throw System::ArgumentOutOfRangeException("count");
+    if (static_cast<std::size_t>(index) + static_cast<std::size_t>(count) > buffer.size())
+        throw System::ArgumentException("XmlWriter::WriteBase64: the range runs past the end of the buffer.");
+    const std::vector<SharpRuntime::bytecs> slice(buffer.begin() + index,
+                                                  buffer.begin() + index + count);
+    WriteString(System::Convert::ToBase64String(slice));
 }
 
 void XmlWriter::WriteAttributeString(const std::string& name, const std::string& value) {
