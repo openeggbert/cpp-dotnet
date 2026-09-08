@@ -54,6 +54,7 @@ set(sharp_runtime_module_directories
     xml
     xml-linq
     xml-serialization
+    service-model
 )
 
 foreach(module_directory IN LISTS sharp_runtime_module_directories)
